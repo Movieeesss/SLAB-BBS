@@ -1,6 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import FootingBBSCalculator from './FootingBBS'
+import FootingBBSCalculator from './SlabBBS'
 import './style.css'
 
 const rootElement = document.getElementById('root') || document.getElementById('app');
