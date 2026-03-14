@@ -44,7 +44,7 @@ export default function SlabBBSCalculator() {
       return { ...r, nosY, nosX, totalKg, weightY, weightX };
     });
 
-    // Diameter-wise Summary Aggregator
+    // Perfect summing for S1, S2, etc.
     const summary: Record<number, number> = { 8: 0, 10: 0, 12: 0, 16: 0, 20: 0, 25: 0 };
     results.forEach(res => {
       summary[parseInt(res.diaY)] += res.weightY;
@@ -64,37 +64,42 @@ export default function SlabBBSCalculator() {
     doc.setFontSize(18);
     doc.text("SLAB BBS FINAL REPORT", 105, 15, { align: "center" });
 
-    // Individual Slab Breakdown Table
+    // 1. Individual Slab Breakdown
     autoTable(doc, {
       startY: 25,
-      head: [['Slab', 'Size (Ft)', 'Ly Reinforcement', 'Lx Reinforcement', 'Total Weight']],
+      head: [['Slab', 'Size (Ft)', 'Ly Reinf.', 'Lx Reinf.', 'Weight']],
       body: computedData.results.map(r => [
         r.tag,
-        `${r.lyFt}' x ${r.lxFt}'`,
-        `${r.diaY}mm @ ${r.spY}"`,
-        `${r.diaX}mm @ ${r.spX}"`,
+        `${r.lyFt}'x${r.lxFt}'`,
+        `${r.diaY}mm@${r.spY}"`,
+        `${r.diaX}mm@${r.spX}"`,
         `${r.totalKg.toFixed(2)} KG`
       ]),
       headStyles: { fillColor: [0, 112, 192] },
       theme: 'grid'
     });
 
-    // Diameter-wise Summary Table
-    const finalY = (doc as any).lastAutoTable.finalY + 10;
+    // 2. Diameter-wise Summary Table (Fixing TS2322)
+    const finalY = (doc as any).lastAutoTable.finalY + 15;
     doc.text("FINAL STEEL SUMMARY", 14, finalY);
     
-    const summaryRows = Object.entries(computedData.summary)
+    const summaryBody: any[] = Object.entries(computedData.summary)
       .filter(([_, kg]) => kg > 0)
       .map(([dia, kg]) => [`${dia}mm Rebar`, `${kg.toFixed(2)} KG`]);
 
     const grandTotal = Object.values(computedData.summary).reduce((a, b) => a + b, 0);
-    summaryRows.push([{ content: 'GRAND TOTAL', styles: { fontStyle: 'bold' } }, { content: `${grandTotal.toFixed(2)} KG`, styles: { fontStyle: 'bold' } }]);
+    
+    // Adding Grand Total Row correctly for TypeScript
+    summaryBody.push([
+      { content: 'GRAND TOTAL', styles: { fontStyle: 'bold', fillColor: [240, 240, 240] } },
+      { content: `${grandTotal.toFixed(2)} KG`, styles: { fontStyle: 'bold', fillColor: [240, 240, 240] } }
+    ]);
 
     autoTable(doc, {
       startY: finalY + 5,
       head: [['Diameter', 'Total Quantity']],
-      body: summaryRows,
-      headStyles: { fillColor: [146, 208, 80] },
+      body: summaryBody,
+      headStyles: { fillColor: [146, 208, 80], textColor: [0, 0, 0] },
       theme: 'striped'
     });
 
@@ -111,10 +116,10 @@ export default function SlabBBSCalculator() {
         {rows.map((row, idx) => {
           const res = computedData.results[idx];
           return (
-            <div key={row.id} style={{ backgroundColor: '#00b0f0', borderRadius: '12px', border: '2px solid #0070c0', marginBottom: '15px', overflow: 'hidden' }}>
-              <div style={{ backgroundColor: '#0070c0', color: '#fff', padding: '8px 12px', display: 'flex', justifyContent: 'space-between' }}>
+            <div key={row.id} style={{ backgroundColor: '#00b0f0', borderRadius: '12px', border: '2px solid #0070c0', marginBottom: '15px', overflow: 'hidden', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
+              <div style={{ backgroundColor: '#0070c0', color: '#fff', padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontWeight: 'bold' }}>DATA - {row.tag}</span>
-                <button onClick={() => setRows(rows.filter(r => r.id !== row.id))} style={{ background: 'red', border: 'none', color: '#fff', borderRadius: '4px', cursor: 'pointer' }}>REMOVE</button>
+                <button onClick={() => setRows(rows.filter(r => r.id !== row.id))} style={{ background: 'red', border: 'none', color: '#fff', borderRadius: '4px', cursor: 'pointer', padding: '2px 8px', fontWeight: 'bold' }}>REMOVE</button>
               </div>
 
               <div style={{ padding: '12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
@@ -142,7 +147,7 @@ export default function SlabBBSCalculator() {
                 </div>
               </div>
 
-              <div style={{ backgroundColor: '#ffff00', padding: '10px', display: 'flex', justifyContent: 'space-between', fontWeight: '900' }}>
+              <div style={{ backgroundColor: '#ffff00', padding: '12px', display: 'flex', justifyContent: 'space-between', fontWeight: '900', color: '#000' }}>
                 <span>Nos: Y:{res.nosY} / X:{res.nosX}</span>
                 <span>{res.totalKg.toFixed(2)} KG</span>
               </div>
@@ -150,17 +155,16 @@ export default function SlabBBSCalculator() {
           );
         })}
 
-        {/* Professional Summary Card */}
-        <div style={{ background: '#fff', border: '2px solid #0070c0', borderRadius: '12px', padding: '15px', marginBottom: '20px' }}>
-          <h2 style={{ margin: '0 0 10px 0', fontSize: '18px', textAlign: 'center', borderBottom: '2px solid #eee', paddingBottom: '5px' }}>FINAL STEEL REPORT</h2>
+        <div style={{ background: '#fff', border: '2px solid #0070c0', borderRadius: '12px', padding: '15px', marginBottom: '20px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>
+          <h2 style={{ margin: '0 0 10px 0', fontSize: '18px', textAlign: 'center', color: '#0070c0', borderBottom: '2px solid #eee', paddingBottom: '5px' }}>FINAL STEEL REPORT</h2>
           {Object.entries(computedData.summary).map(([dia, kg]) => kg > 0 && (
-            <div key={dia} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px dashed #ccc' }}>
-              <span style={{ fontWeight: 'bold' }}>{dia}mm Steel:</span>
+            <div key={dia} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px dashed #ccc' }}>
+              <span style={{ fontWeight: 'bold', color: '#444' }}>{dia}mm Steel:</span>
               <span style={{ fontWeight: 'bold' }}>{kg.toFixed(2)} KG</span>
             </div>
           ))}
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', paddingTop: '10px', borderTop: '2px solid #0070c0', fontWeight: '900', fontSize: '18px' }}>
-            <span>GRAND TOTAL:</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', paddingTop: '10px', borderTop: '2px solid #0070c0', fontWeight: '900', fontSize: '20px' }}>
+            <span>TOTAL:</span>
             <span>{Object.values(computedData.summary).reduce((a, b) => a + b, 0).toFixed(2)} KG</span>
           </div>
         </div>
@@ -172,12 +176,12 @@ export default function SlabBBSCalculator() {
   );
 }
 
-// Minimalist Styles
+// Minimalist Internal Styles
 const inputBox: React.CSSProperties = { background: '#fff', padding: '8px', borderRadius: '6px' };
 const blueBox: React.CSSProperties = { background: '#e1f5fe', padding: '8px', borderRadius: '6px' };
 const lbl: React.CSSProperties = { fontSize: '11px', fontWeight: 'bold', display: 'block', color: '#666' };
-const inpt: React.CSSProperties = { border: 'none', fontSize: '16px', fontWeight: 'bold', width: '100%', outline: 'none' };
-const inptSmall: React.CSSProperties = { border: 'none', fontSize: '16px', fontWeight: 'bold', width: '40px', background: 'transparent' };
-const sel: React.CSSProperties = { border: 'none', fontWeight: 'bold', background: 'transparent', fontSize: '15px' };
-const btnBlue: React.CSSProperties = { width: '100%', padding: '15px', backgroundColor: '#0070c0', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '10px' };
-const btnBlack: React.CSSProperties = { width: '100%', padding: '15px', backgroundColor: '#222', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' };
+const inpt: React.CSSProperties = { border: 'none', fontSize: '17px', fontWeight: '900', width: '100%', outline: 'none' };
+const inptSmall: React.CSSProperties = { border: 'none', fontSize: '17px', fontWeight: '900', width: '50px', background: 'transparent', outline: 'none' };
+const sel: React.CSSProperties = { border: 'none', fontWeight: '900', background: 'transparent', fontSize: '15px', color: '#0070c0' };
+const btnBlue: React.CSSProperties = { width: '100%', padding: '16px', backgroundColor: '#0070c0', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: '900', cursor: 'pointer', marginBottom: '10px', fontSize: '14px' };
+const btnBlack: React.CSSProperties = { width: '100%', padding: '16px', backgroundColor: '#222', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: '900', cursor: 'pointer', fontSize: '14px' };
