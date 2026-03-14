@@ -2,7 +2,6 @@ import React, { useState, useMemo } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-// 1. Define specific types for TypeScript stability
 interface SlabRow {
   id: number;
   tag: string;
@@ -14,19 +13,9 @@ interface SlabRow {
   spX: string;
 }
 
-const STEEL_REF: Record<number, { rods: number; bundleWeight: number }> = {
-  8:  { rods: 10, bundleWeight: 47.4 },
-  10: { rods: 7,  bundleWeight: 51.87 },
-  12: { rods: 5,  bundleWeight: 53.35 },
-  16: { rods: 3,  bundleWeight: 56.88 },
-  20: { rods: 2,  bundleWeight: 59.26 },
-  25: { rods: 1,  bundleWeight: 46.3 },
-};
-
 export default function SlabBBSCalculator() {
-  // Use the interface instead of any[]
   const [rows, setRows] = useState<SlabRow[]>([
-    { id: 1, tag: 'S1', lyFt: '25.75', lxFt: '9.74', diaY: '8', spY: '5', diaX: '10', spX: '5' }
+    { id: 1, tag: 'S1', lyFt: '17.75', lxFt: '17.75', diaY: '10', spY: '6', diaX: '10', spX: '6' }
   ]);
 
   const computedData = useMemo(() => {
@@ -38,141 +27,111 @@ export default function SlabBBSCalculator() {
       const dY = parseInt(r.diaY);
       const dX = parseInt(r.diaX);
 
+      // Conversion to Meters
       const lyM = lyFt / 3.281;
       const lxM = lxFt / 3.281;
 
-      // Spacing math
-      const nosY = spY > 0 ? Math.ceil(lyM / (spY / 12 / 3.281)) + 1 : 0;
-      const nosX = spX > 0 ? Math.ceil(lxM / (spX / 12 / 3.281)) + 1 : 0;
+      // Nos Calculation matching your Excel: =C6/(E6/12/3.281)+1
+      const nosY = spY > 0 ? Math.floor(lyM / (spY / 12 / 3.281)) + 1 : 0;
+      const nosX = spX > 0 ? Math.floor(lxM / (spX / 12 / 3.281)) + 1 : 0;
 
-      const totalLenY = lyM * nosY;
-      const totalLenX = lxM * nosX;
+      // Exact Weight Calculation: (Length * Nos * D^2 / 162)
+      const weightY = (lyM * nosY * (dY * dY)) / 162;
+      const weightX = (lxM * nosX * (dX * dX)) / 162;
+      const totalKg = weightY + weightX;
 
-      const refY = STEEL_REF[dY];
-      const refX = STEEL_REF[dX];
-
-      const bundlesY = refY ? (totalLenY / 12 / refY.rods) : 0;
-      const bundlesX = refX ? (totalLenX / 12 / refX.rods) : 0;
-
-      const kgY = bundlesY * (refY?.bundleWeight || 0);
-      const kgX = bundlesX * (refX?.bundleWeight || 0);
-
-      return { ...r, nosY, nosX, kgY, kgX, totalKg: kgY + kgX };
+      return { ...r, nosY, nosX, totalKg };
     });
 
-    const summary: Record<number, number> = { 8: 0, 10: 0, 12: 0, 16: 0, 20: 0, 25: 0 };
+    const summary: Record<number, number> = { 8: 0, 10: 0, 12: 0, 16: 0 };
     results.forEach(res => {
       const dy = parseInt(res.diaY);
       const dx = parseInt(res.diaX);
-      if (summary[dy] !== undefined) summary[dy] += res.kgY;
-      if (summary[dx] !== undefined) summary[dx] += res.kgX;
+      const lyM = (parseFloat(res.lyFt) || 0) / 3.281;
+      const lxM = (parseFloat(res.lxFt) || 0) / 3.281;
+      
+      summary[dy] += (lyM * res.nosY * (dy * dy)) / 162;
+      summary[dx] += (lxM * res.nosX * (dx * dx)) / 162;
     });
 
     return { results, summary };
   }, [rows]);
 
-  const addRow = () => {
-    const newRow: SlabRow = { 
-      id: Date.now(), 
-      tag: `S${rows.length + 1}`, 
-      lyFt: '10', lxFt: '10', 
-      diaY: '8', spY: '6', 
-      diaX: '8', spX: '6' 
-    };
-    setRows([...rows, newRow]);
+  const shareToWhatsApp = () => {
+    let message = `*UNiQ DESIGNS - SLAB BBS REPORT*%0A%0A`;
+    computedData.results.forEach(r => {
+      message += `*${r.tag}*: ${r.lyFt}'x${r.lxFt}' | Ly:${r.nosY}nos Lx:${r.nosX}nos | *${r.totalKg.toFixed(2)} KG*%0A`;
+    });
+    message += `%0A*TOTAL STEEL:* ${Object.values(computedData.summary).reduce((a, b) => a + b, 0).toFixed(2)} KG`;
+    window.open(`https://wa.me/?text=${message}`, '_blank');
   };
 
   const updateRow = (id: number, field: keyof SlabRow, val: string) => {
     setRows(rows.map(row => row.id === id ? { ...row, [field]: val } : row));
   };
 
-  const generatePDF = () => {
-    const doc = new jsPDF();
-    doc.setFontSize(16);
-    doc.text("ROOF SLAB STEEL QUANTITY REPORT", 14, 15);
-    autoTable(doc, {
-      startY: 22,
-      head: [['Slab', 'Size (Ft)', 'Ly Reinforcement', 'Lx Reinforcement', 'Total KG']],
-      body: computedData.results.map(r => [
-        r.tag, `${r.lyFt}x${r.lxFt}`, `${r.diaY}mm @ ${r.spY}"`, `${r.diaX}mm @ ${r.spX}"`, r.totalKg.toFixed(2)
-      ]),
-      headStyles: { fillColor: [146, 208, 80] }
-    });
-    doc.save("Slab_BBS_Report.pdf");
-  };
-
   return (
-    <div style={{ maxWidth: '450px', margin: '0 auto', fontFamily: 'sans-serif', backgroundColor: '#f4f4f4', minHeight: '100vh', paddingBottom: '40px' }}>
-      <header style={{ backgroundColor: '#92d050', padding: '15px', textAlign: 'center', fontWeight: '900', fontSize: '20px', borderBottom: '4px solid #76b041' }}>
+    <div style={{ maxWidth: '400px', margin: '0 auto', fontFamily: '"Segoe UI", Roboto, sans-serif', backgroundColor: '#f0f2f5', minHeight: '100vh' }}>
+      <header style={{ backgroundColor: '#92d050', padding: '15px', textAlign: 'center', fontWeight: 'bold', fontSize: '20px', color: '#000', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
         SLAB BBS CALCULATOR
       </header>
 
-      <div style={{ padding: '10px' }}>
-        {rows.map((row, idx) => {
-          const res = computedData.results[idx];
-          return (
-            <div key={row.id} style={{ marginBottom: '15px', border: '1px solid #0070c0', borderRadius: '8px', overflow: 'hidden' }}>
-              <div style={{ backgroundColor: '#0070c0', color: 'white', padding: '5px 10px', fontSize: '12px', display: 'flex', justifyContent: 'space-between' }}>
-                <span>SLAB DATA - {row.tag}</span>
-                <button onClick={() => setRows(rows.filter(r => r.id !== row.id))} style={{ background: 'red', border: 'none', color: 'white', cursor: 'pointer', borderRadius: '4px' }}>X</button>
+      <div style={{ padding: '12px' }}>
+        {rows.map((row, idx) => (
+          <div key={row.id} style={{ background: '#00b0f0', borderRadius: '10px', overflow: 'hidden', marginBottom: '15px', border: '2px solid #0070c0' }}>
+            <div style={{ background: '#0070c0', color: '#fff', padding: '6px 12px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+              <span>SLAB DATA - {row.tag}</span>
+              <button onClick={() => setRows(rows.filter(r => r.id !== row.id))} style={{ background: '#ff0000', border: 'none', color: '#fff', borderRadius: '4px', cursor: 'pointer', padding: '0 8px' }}>X</button>
+            </div>
+            
+            <div style={{ padding: '12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div style={{ background: '#fff', padding: '6px', borderRadius: '6px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 'bold' }}>Ly (Ft)</label>
+                <input type="text" value={row.lyFt} onChange={e => updateRow(row.id, 'lyFt', e.target.value)} style={{ width: '100%', border: 'none', fontSize: '15px', fontWeight: '900' }} />
               </div>
-
-              <div style={{ backgroundColor: '#00b0f0', padding: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <div style={{ background: 'white', padding: '5px', borderRadius: '4px' }}>
-                  <label style={{ fontSize: '10px', display: 'block' }}>Ly (Ft)</label>
-                  <input type="text" value={row.lyFt} onChange={e => updateRow(row.id, 'lyFt', e.target.value)} style={{ width: '90%', border: 'none', fontWeight: 'bold' }} />
-                </div>
-                <div style={{ background: 'white', padding: '5px', borderRadius: '4px' }}>
-                  <label style={{ fontSize: '10px', display: 'block' }}>Lx (Ft)</label>
-                  <input type="text" value={row.lxFt} onChange={e => updateRow(row.id, 'lxFt', e.target.value)} style={{ width: '90%', border: 'none', fontWeight: 'bold' }} />
-                </div>
-                
-                <div style={{ background: '#e1f5fe', padding: '5px', borderRadius: '4px' }}>
-                  <label style={{ fontSize: '10px' }}>Ly Dia / Sp(in)</label>
-                  <div style={{ display: 'flex', gap: '2px' }}>
-                    <select value={row.diaY} onChange={e => updateRow(row.id, 'diaY', e.target.value)} style={{ width: '50%' }}>
-                      {[8, 10, 12, 16].map(d => <option key={d} value={d}>{d}mm</option>)}
-                    </select>
-                    <input type="text" value={row.spY} onChange={e => updateRow(row.id, 'spY', e.target.value)} style={{ width: '40%' }} />
-                  </div>
-                </div>
-
-                <div style={{ background: '#e1f5fe', padding: '5px', borderRadius: '4px' }}>
-                  <label style={{ fontSize: '10px' }}>Lx Dia / Sp(in)</label>
-                  <div style={{ display: 'flex', gap: '2px' }}>
-                    <select value={row.diaX} onChange={e => updateRow(row.id, 'diaX', e.target.value)} style={{ width: '50%' }}>
-                      {[8, 10, 12, 16].map(d => <option key={d} value={d}>{d}mm</option>)}
-                    </select>
-                    <input type="text" value={row.spX} onChange={e => updateRow(row.id, 'spX', e.target.value)} style={{ width: '40%' }} />
-                  </div>
+              <div style={{ background: '#fff', padding: '6px', borderRadius: '6px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 'bold' }}>Lx (Ft)</label>
+                <input type="text" value={row.lxFt} onChange={e => updateRow(row.id, 'lxFt', e.target.value)} style={{ width: '100%', border: 'none', fontSize: '15px', fontWeight: '900' }} />
+              </div>
+              <div style={{ background: '#e1f5fe', padding: '6px', borderRadius: '6px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 'bold' }}>Ly Dia/Sp</label>
+                <div style={{ display: 'flex' }}>
+                  <select value={row.diaY} onChange={e => updateRow(row.id, 'diaY', e.target.value)} style={{ border: 'none', background: 'transparent', fontWeight: 'bold' }}>
+                    <option value="8">8mm</option><option value="10">10mm</option><option value="12">12mm</option>
+                  </select>
+                  <input value={row.spY} onChange={e => updateRow(row.id, 'spY', e.target.value)} style={{ width: '40px', border: 'none', marginLeft: '5px', fontWeight: 'bold' }} />
                 </div>
               </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px', backgroundColor: '#ffff00', fontSize: '12px', fontWeight: 'bold' }}>
-                <span>Bars: Y:{res.nosY} / X:{res.nosX}</span>
-                <span>{res.totalKg.toFixed(2)} KG</span>
+              <div style={{ background: '#e1f5fe', padding: '6px', borderRadius: '6px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 'bold' }}>Lx Dia/Sp</label>
+                <div style={{ display: 'flex' }}>
+                  <select value={row.diaX} onChange={e => updateRow(row.id, 'diaX', e.target.value)} style={{ border: 'none', background: 'transparent', fontWeight: 'bold' }}>
+                    <option value="8">8mm</option><option value="10">10mm</option><option value="12">12mm</option>
+                  </select>
+                  <input value={row.spX} onChange={e => updateRow(row.id, 'spX', e.target.value)} style={{ width: '40px', border: 'none', marginLeft: '5px', fontWeight: 'bold' }} />
+                </div>
               </div>
             </div>
-          );
-        })}
 
-        <div style={{ backgroundColor: 'white', padding: '15px', borderRadius: '8px', border: '2px solid #0070c0' }}>
-          <h4 style={{ margin: '0 0 10px 0', textAlign: 'center', borderBottom: '1px solid #ccc' }}>STEEL SUMMARY</h4>
+            <div style={{ background: '#ffff00', padding: '10px', display: 'flex', justifyContent: 'space-between', fontWeight: '900', borderTop: '1px solid #0070c0' }}>
+              <span>Bars: Y:{computedData.results[idx].nosY} / X:{computedData.results[idx].nosX}</span>
+              <span>{computedData.results[idx].totalKg.toFixed(2)} KG</span>
+            </div>
+          </div>
+        ))}
+
+        <div style={{ background: '#fff', border: '2px solid #0070c0', borderRadius: '10px', padding: '15px', marginBottom: '15px' }}>
+          <h3 style={{ margin: '0 0 10px 0', textAlign: 'center', fontSize: '16px', borderBottom: '1px solid #eee' }}>STEEL SUMMARY</h3>
           {Object.entries(computedData.summary).map(([dia, kg]) => kg > 0 && (
-            <div key={dia} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px dashed #eee' }}>
+            <div key={dia} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0' }}>
               <span style={{ fontWeight: 'bold' }}>{dia}mm Steel:</span>
-              <span>{kg.toFixed(2)} KG</span>
+              <span style={{ fontWeight: 'bold' }}>{kg.toFixed(2)} KG</span>
             </div>
           ))}
         </div>
 
-        <button onClick={addRow} style={{ width: '100%', marginTop: '10px', padding: '12px', background: '#0070c0', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
-          + ADD SLAB TYPE
-        </button>
-
-        <button onClick={generatePDF} style={{ width: '100%', marginTop: '10px', padding: '12px', background: '#333', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
-          DOWNLOAD SUMMARY PDF
-        </button>
+        <button onClick={() => setRows([...rows, { id: Date.now(), tag: `S${rows.length + 1}`, lyFt: '10', lxFt: '10', diaY: '8', spY: '6', diaX: '8', spX: '6' }])} style={{ width: '100%', padding: '12px', background: '#0070c0', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', marginBottom: '10px' }}>+ ADD SLAB TYPE</button>
+        <button onClick={shareToWhatsApp} style={{ width: '100%', padding: '12px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', marginBottom: '10px' }}>SHARE TO WHATSAPP</button>
       </div>
     </div>
   );
